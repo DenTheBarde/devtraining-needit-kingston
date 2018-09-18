@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<record_update sys_domain="global" table="sysevent_in_email_action">
+    <sysevent_in_email_action action="INSERT_OR_UPDATE">
+        <action>record_action</action>
+        <active>true</active>
+        <assignment_operator/>
+        <condition_script/>
+        <description/>
+        <event_name>email.read</event_name>
+        <filter_condition/>
+        <from/>
+        <name>Update NeedIt Approval Request</name>
+        <order>100</order>
+        <reply_email/>
+        <required_roles/>
+        <script><![CDATA[(function runAction(/*GlideRecord*/ current, /*GlideRecord*/ event, /*EmailWrapper*/ email, /*ScopedEmailLogger*/ logger, /*EmailClassifier*/ classifier) {
+
+processApprovalEmail();
+
+function processApprovalEmail() {
+	"use strict";
+	var errorMsg = "";
+	var msgArray = [];
+
+	if (current.getTableName() != "sysapproval_approver")
+		return;
+
+	var displayValue = getApprovalDisplayValue(current);
+
+	if (!validUser()) {
+		gs.log(getFailurePreamble() + "Sender email does not match approval assignee.");
+		msgArray.push(displayValue);
+		msgArray.push(current.approver.getDisplayValue());
+		msgArray.push(current.approver.email);
+		errorMsg = gs.getMessage("approvalInvalidUser", msgArray);
+		createEmailEvent(errorMsg);
+		return;
+	}
+
+	if (current.state == 'cancelled') {
+		gs.log(getFailurePreamble() + "The approval has been canceled.");
+		msgArray.push(displayValue);
+		errorMsg = gs.getMessage("approvalCancelled", msgArray);
+		createEmailEvent(errorMsg);
+		return;
+	}
+
+	if (email.body.state != undefined)
+		current.state = email.body.state;
+
+	if (email.subject.indexOf("approve") >= 0)
+		current.state = "approved";
+
+	if (email.subject.indexOf("reject") >= 0)
+		current.state = "rejected";
+
+	if (current.state != "approved" && current.state != "rejected") {
+		gs.log(getFailurePreamble() + "The subject is malformed. The approver probably did not click the approve or reject button on the email.");
+		msgArray.push(displayValue);
+		errorMsg = gs.getMessage("approvalFailed", msgArray);
+		createEmailEvent(errorMsg);
+		return;
+	}
+
+	current.comments = "reply from: " + email.from + "\n\n" + email.body_text;
+	var controller = new GlideController();
+	controller.putGlobal("approvalSource", "email");
+	current.update();
+	controller.removeGlobal("approvalSource");
+
+	function validUser() {
+		if (current.approver == email.from_sys_id)
+			return true;
+
+		// check if the email is from a delegate of the approver
+		var g = new GlideRecord("sys_user_delegate");
+		g.addQuery("user", current.approver.toString());
+		g.addQuery("delegate", email.from_sys_id);
+		g.addQuery("approvals", "true");
+		g.addQuery("starts", "<=", gs.daysAgo(0));
+		g.addQuery("ends", ">=", gs.daysAgo(0));
+		g.query();
+		return g.hasNext();
+	}
+
+	function createEmailEvent(msg) {
+		gs.eventQueue("approval.email.errorMsg", current, email.from, msg);
+	}
+
+	function getFailurePreamble() {
+		return 'Approval email from ' + email.from + ' for task "' + displayValue + '" assigned to "' + current.approver.getDisplayValue()
+				+ '" failed because: ';
+	}
+
+	function getApprovalDisplayValue(approval) {
+		if (!gs.nil(approval.sysapproval))
+			return approval.getDisplayValue();
+		else {
+			var target = new GlideRecord(approval.source_table);
+			if (target.get(approval.document_id))
+				return target.getDisplayValue();
+		}
+		gs.warn("Target for sysapproval_approver:" + approval.getUniqueValue() + " not found. Target=" + approval.source_table + ":" + approval.document_id);
+		return "Unknown";
+	}
+
+}
+
+})(current, event, email, logger, classifier);]]></script>
+        <stop_processing>false</stop_processing>
+        <sys_class_name>sysevent_in_email_action</sys_class_name>
+        <sys_created_by>dbarde</sys_created_by>
+        <sys_created_on>2018-09-12 12:17:30</sys_created_on>
+        <sys_domain>global</sys_domain>
+        <sys_domain_path>/</sys_domain_path>
+        <sys_id>ad05fe70db202300d9f1a455ca9619c4</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>Update NeedIt Approval Request</sys_name>
+        <sys_overrides/>
+        <sys_package display_value="NeedIt" source="x_58872_needit">6ead8e780f603200cd674f8ce1050ed1</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="NeedIt">6ead8e780f603200cd674f8ce1050ed1</sys_scope>
+        <sys_update_name>sysevent_in_email_action_ad05fe70db202300d9f1a455ca9619c4</sys_update_name>
+        <sys_updated_by>dbarde</sys_updated_by>
+        <sys_updated_on>2018-09-12 12:17:30</sys_updated_on>
+        <table>x_58872_needit_needit</table>
+        <template/>
+        <type>new</type>
+    </sysevent_in_email_action>
+</record_update>
